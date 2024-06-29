@@ -32,10 +32,6 @@ stages:
         versionSpec: '3.8'
         addToPath: true
 
-    - script: composer install --no-interaction --prefer-dist
-      workingDirectory: $(rootFolder)
-      displayName: 'Composer install'
-
     - script: |
         sudo apt-get update
         sudo apt-get install -y software-properties-common
