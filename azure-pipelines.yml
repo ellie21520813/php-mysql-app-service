@@ -1,0 +1,100 @@
+trigger:
+- '*'
+
+variables:
+  releaseBranchName: 'main'
+  phpVersion: '8.2'
+  rootFolder: $(System.DefaultWorkingDirectory)
+  resourceGroup: 'msdocs-laravel-app-service-rg'
+
+pool:
+  name: MyAgentPool
+
+stages:
+- stage: 'Build'
+  displayName: 'Build the web php'
+  jobs:
+  - job: 'Build'
+    displayName: 'Build job'
+    pool:
+      name: MyAgentPool
+    steps:
+    - checkout: self
+
+    - script: |
+        sudo apt-get update
+        sudo apt-get install -y python3.8 python3.8-venv python3.8-dev
+        sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.8 1
+      workingDirectory: $(rootFolder)
+      displayName: 'Install Python 3.8'
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.8'
+        addToPath: true
+
+    - script: composer install --no-interaction --prefer-dist
+      workingDirectory: $(rootFolder)
+      displayName: 'Composer install'
+
+    - script: |
+        sudo apt-get update
+        sudo apt-get install -y software-properties-common
+        sudo add-apt-repository -y ppa:ondrej/php
+        sudo apt-get update
+        sudo apt-get install -y php${{ variables.phpVersion }} php${{ variables.phpVersion }}-cli php${{ variables.phpVersion }}-common php${{ variables.phpVersion }}-fpm php${{ variables.phpVersion }}-mbstring php${{ variables.phpVersion }}-xml php${{ variables.phpVersion }}-curl php${{ variables.phpVersion }}-zip unzip zip
+        sudo update-alternatives --install /usr/bin/php php /usr/bin/php${{ variables.phpVersion }} 1
+        sudo update-alternatives --install /usr/bin/phar phar /usr/bin/phar${{ variables.phpVersion }} 1
+        sudo update-alternatives --install /usr/bin/phpdbg phpdbg /usr/bin/phpdbg${{ variables.phpVersion }} 1
+        sudo update-alternatives --install /usr/bin/php-cgi php-cgi /usr/bin/php-cgi${{ variables.phpVersion }} 1
+        sudo update-alternatives --install /usr/bin/phar.phar phar.phar /usr/bin/phar.phar${{ variables.phpVersion }} 1
+        php -version
+      workingDirectory: $(rootFolder)
+      displayName: 'Install and set PHP version ${{ variables.phpVersion }}'
+
+    - task: ArchiveFiles@2
+      inputs:
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)/site/wwwroot/public'
+        includeRootFolder: false
+        archiveType: 'zip'
+        archiveFile: $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
+        replaceExistingArchive: true
+
+    - publish: $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
+      displayName: 'Upload package'
+      artifact: drop
+
+- stage: 'Dev'
+  displayName: 'Deploy to the dev environment'
+  dependsOn: Build
+  condition: |
+    and
+    (
+      succeeded(),
+      eq(variables['Build.SourceBranchName'], variables['releaseBranchName'])
+    )
+  jobs:
+  - deployment: Deploy
+    pool:
+      name: MyAgentPool
+    environment: 'dev'
+    variables:
+    - group: Release
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - download: current
+            artifact: drop
+          
+          - script: |
+              curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+            displayName: 'Install Azure CLI'
+
+          - task: AzureWebApp@1
+            displayName: 'Deploy to Azure Web App'
+            inputs:
+              azureSubscription: 'Resource Manager - Laravel - Service'
+              appName: $(webAppName)
+              package: $(Pipeline.Workspace)/drop/$(Build.BuildId).zip
+              appType: 'webApp'
+  
