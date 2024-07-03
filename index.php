@@ -9,7 +9,6 @@
 			<li><a href="delete.php"><strong>Remove a Product</strong></a></li>
 		</div>
 	</ul>
-	<p>Hello World!</p>
 </div>
 
 
