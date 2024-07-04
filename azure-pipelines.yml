@@ -32,11 +32,6 @@ stages:
         php -version
       workingDirectory: $(rootFolder)
       displayName: 'Install and set PHP version ${{ variables.phpVersion }}'
-    - script: |
-        php artisan serve &
-        sleep 10
-      workingDirectory: $(rootFolder)
-      displayName: 'run php'
 
     - task: ArchiveFiles@2
       inputs:
